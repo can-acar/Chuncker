@@ -9,3 +9,7 @@ riderModule.iml
 /.vs/
 logs/
 .github/
+.DS_Store
+Chuncker/.DS_Store
+Chuncker.Tests/.DS_Store
+Storage/.DS_Store

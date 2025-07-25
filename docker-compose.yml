@@ -1,0 +1,103 @@
+services:
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    networks:
+      - chuncker-logging
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - chuncker-logging
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    volumes:
+      - ./logs:/var/log/chuncker:ro
+      - ./promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - chuncker-logging
+    depends_on:
+      - loki
+  
+  mongodb:
+    image: mongo:latest
+    container_name: chuncker-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: chuncker-mongo-express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password
+      ME_CONFIG_MONGODB_URL: mongodb://admin:password@mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+    depends_on:
+      - mongodb
+
+  redis:
+    image: redis:latest
+    container_name: chuncker-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  chuncker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chuncker-app
+    restart: always
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      - MongoDB__ConnectionString=mongodb://admin:password@mongodb:27017/ChunckerDb?authSource=admin
+      - MongoDB__Database=ChunckerDb
+      - Redis__ConnectionString=redis:6379
+      - Logging__File__Path=/var/log/chuncker/logs.txt
+      - Storage__DefaultChunkSize=1048576
+      - Storage__CompressionEnabled=true
+      - Storage__CompressionLevel=Optimal
+    volumes:
+      - chuncker_logs:/var/log/chuncker
+      - chuncker_storage:/app/storage
+
+volumes:
+  mongodb_data:
+  redis_data:
+  chuncker_logs:
+  chuncker_storage:
+  loki-data:
+  grafana-data:
+
+networks:
+  chuncker-logging:
+    driver: bridge
